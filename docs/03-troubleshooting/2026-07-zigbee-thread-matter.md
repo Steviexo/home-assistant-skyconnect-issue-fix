@@ -454,3 +454,92 @@ Der manuelle Matter-Code wird ohne Bindestriche an die API übergeben. Das berei
 7. erst danach Firmware, Netzwerk oder Dataset verändern
 
 Nicht mehrere Ebenen gleichzeitig ändern.
+
+---
+
+## 16. OTBR-Multicast-Routing und hoher Interface-Index
+
+### Fehlerbild
+
+Im Juli/August 2026 trat ein ungewöhnlicher Fehler im IPv6-Multicast-Routing von OTBR auf.
+
+Der ältere OTBR-Build geriet wiederholt in folgende Sequenz:
+
+```text
+Role detached -> leader
+InitMulticastRouterSock(): Cannot assign requested address
+otbr-agent exited with code 5
+```
+Dadurch wurde das virtuelle Thread-Interface wpan0 sehr häufig neu erzeugt.
+
+Nach längerer Laufzeit hatte wpan0 schließlich einen ungewöhnlich hohen Linux-Interface-Index:
+```
+87843
+```
+Ein strace des otbr-agent zeigte beim Aufruf von MRT6_ADD_MIF jedoch den Wert:
+```
+22307
+```
+Dies entspricht:
+```
+87843 mod 65536 = 22307
+```
+Der betreffende IPv6-Multicast-Routing-Pfad verwendet für den physischen Interface-Index ein 16-Bit-Feld. Bei einem Interface-Index oberhalb von 65535 wurde der Wert daher abgeschnitten. Der Kernel suchte anschließend nach Interface 22307, das nicht existierte, und antwortete mit:
+```
+EADDRNOTAVAIL
+Cannot assign requested address
+```
+### Diagnose
+
+Aktuellen Index prüfen:
+```
+WPAN="$(cat /sys/class/net/wpan0/ifindex)"
+
+printf 'wpan0: ifindex=%d\n' "$WPAN"
+printf 'wpan0 low16=%d (0x%04x)\n' \
+  "$((WPAN & 65535))" \
+  "$((WPAN & 65535))"
+```
+Bei Bedarf kann der fehlerhafte Kernel-Aufruf mit strace sichtbar gemacht werden:
+```
+OTBR_PID="$(
+  pgrep -f '^/usr/sbin/otbr-agent ' \
+  | head -n1
+)"
+
+sudo timeout 12 \
+  strace -f \
+  -e trace=setsockopt \
+  -p "$OTBR_PID"
+```
+### Behebung
+OTBR auf den getesteten Build sha-9f62a5d aktualisieren.
+IPv6-Forwarding und accept_ra=2 korrekt auf dem Host konfigurieren.
+Den Docker-Host einmal vollständig neu starten, damit die Interface-Indizes neu vergeben werden.
+
+Nach dem Neustart hatte wpan0 wieder einen normalen Interface-Index:
+```
+27
+```
+Danach war das IPv6-Multicast-Routing erfolgreich initialisiert:
+```
+Interface
+wpan0
+eno1
+```
+und OTBR blieb dauerhaft:
+```
+leader
+```
+Zusätzlich erschien:
+```
+Backbone Router becomes Primary!
+```
+### Erkenntnis
+
+Wenn OTBR zwar kurz leader wird, aber anschließend beim Multicast-Routing mit EADDRNOTAVAIL scheitert, sollte neben den IPv6-Sysctls auch der Linux-Interface-Index von wpan0 geprüft werden.
+
+Ein außergewöhnlich hoher ifindex kann nach sehr vielen Interface-Neuerstellungen selbst dann zum Problem werden, wenn die übrige Netzwerk- und Docker-Konfiguration korrekt ist.
+
+
+---
