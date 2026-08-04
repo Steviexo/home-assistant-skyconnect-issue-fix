@@ -311,7 +311,9 @@ net.ipv6.conf.eno1.forwarding = 1
 net.ipv6.conf.eno1.accept_ra = 2
 net.ipv6.conf.eno1.accept_ra_rt_info_max_plen = 64
 ```
+
 accept_ra=2 ist absichtlich gesetzt: Router Advertisements sollen auf eno1 weiterhin akzeptiert werden, obwohl IPv6-Forwarding aktiv ist.
+
 ---
 ## Home-Assistant-Integrationen
 
