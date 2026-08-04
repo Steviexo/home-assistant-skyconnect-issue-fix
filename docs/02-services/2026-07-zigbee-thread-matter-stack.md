@@ -412,7 +412,9 @@ Frontend prüfen:
 ss -ltnp | grep ':8090'
 curl -I http://127.0.0.1:8090/
 ```
+
 Bei network_mode: host lauscht Zigbee2MQTT direkt auf dem Host. Ein fehlender Zugriff aus dem LAN kann daher auch durch UFW verursacht werden.
+
 ---
 
 ### Mosquitto
